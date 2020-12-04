@@ -143,3 +143,101 @@ class FIrstActivity : AppCompatActivity() {
 创建了两个参单项，item标签用来创建具体的某一个菜单项。剩下的和按钮一样，定义一个唯一标识符和显示名称。
 
 接下来在Activity中重写onCrateOptionMenu()方法，重写方法可以使用**Ctrl+O**快捷键
+
+```kotlin
+//add menu Ctrl+O
+override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+    menuInflater.inflate(R.menu.main,menu)
+    return true
+}
+```
+
+这里使用了一个语法糖。
+
+在Activity中重写onOptionsItemSelected()方法，定义菜单响应事件
+
+```kotlin
+override fun onOptionsItemSelected(item: MenuItem): Boolean {
+    when(item.itemId){
+        R.id.add_item -> Toast.makeText(this, "You clicked Add", Toast.LENGTH_SHORT).show()
+        R.id.remove_item-> Toast.makeText(this, "You clicked Remove", Toast.LENGTH_SHORT).show()
+    }
+    return true
+}
+```
+
+when小括号内调用的是item的getItemId()方法，这是一个语法糖。
+
+## 4.销毁一个Activity
+
+只需要按back就可以销毁Activity，如果从代码进行销毁的话，可以使用finish()方法。
+
+修改按钮监听器中的代码：
+
+```kotlin
+button1.setOnClickListener{
+    //Toast.makeText(this,"You clicked Button 1",Toast.LENGTH_SHORT).show()
+    finish()
+}
+```
+
+点击按钮即可进行销毁。
+
+## 5.使用显式Intent
+
+新建一个新的Activity，定义一个button2
+
+Intent 是 各组件之间进行交互的一种重要方式，他不仅可以指明当前组件想要执行的动作，还可以在不同组件之间传递数据。Intent一般可用于启动Activity、启动Service以及发送广播等场景。
+
+Intent大致可以分为两种：显式Intent和隐式Intent
+
+Intent(Context packageContext,Class<?> cls),第一个参数要求提供一个启动Activity的上下文，第二个参数Class用于制定想要启动的目标Activity。然后使用startActivity()方法接收一个Intent参数，启动Activity。
+
+修改Activity中按钮的点击事件
+
+```kotlin
+        button1.setOnClickListener{
+//            Toast.makeText(this,"You clicked Button 1",Toast.LENGTH_SHORT).show()
+//            finish()
+            val intent = Intent(this,SecondActivity::class.java)
+            startActivity(intent)
+        }
+```
+
+## 6.使用隐式Intent
+
+不直接指定响应的Activity，而是响应一个更合适的Activity
+
+通过在\<activity\>标签下配置\<intent-filter\>的内容，可以指定当前Activity能够响应的action的category。
+
+```xml
+<activity android:name=".SecondActivity">
+    <intent-filter>
+        <action android:name="com.example.activitytest.ACTION_START"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+    </intent-filter>>
+</activity>
+```
+
+指明了当前Activity可以响应com.example.activitytest.ACTION_START，category中包含了一些附加信息，更加精确地指明了当前activity能够响应的Intent中还可能带有的category。
+
+只有action和category同时满足条件才能进行响应。
+
+修改Activity中的按钮点击事件
+
+```kotlin
+        button1.setOnClickListener{
+//            Toast.makeText(this,"You clicked Button 1",Toast.LENGTH_SHORT).show()
+//            finish()
+//            val intent = Intent(this,SecondActivity::class.java)
+//            startActivity(intent)
+            val intent = Intent("com.example.activitytest.ACTION_START")
+            intent.addCategory("ndroid.intent.category.DEFAULT")
+            startActivity(intent)
+        }
+```
+
+2020.12.04
+
+------
+

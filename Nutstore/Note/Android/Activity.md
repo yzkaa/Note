@@ -241,3 +241,26 @@ Intent(Context packageContext,Class<?> cls),第一个参数要求提供一个启
 
 ------
 
+使用隐式Intent不仅可以启动自己程序内的Activity，还可以启动其他程序的Activity，使多个应用程序之间的功能共享成为了可能。
+
+修改Activity中按钮的点击事件
+
+```kotlin
+        button1.setOnClickListener{
+//            Toast.makeText(this,"You clicked Button 1",Toast.LENGTH_SHORT).show()
+//            finish()
+//            val intent = Intent(this,SecondActivity::class.java)
+//            startActivity(intent)
+//            val intent = Intent("com.example.activitytest.ACTION_START")
+//            intent.addCategory("ndroid.intent.category.MY_CATEGORY")
+            val intent = Intent(Intent.ACTION_VIEW)
+            intent.data = Uri.parse("https://www.baidu.com")
+            startActivity(intent)
+        }
+```
+
+​                   
+
+2020.12.09
+
+------

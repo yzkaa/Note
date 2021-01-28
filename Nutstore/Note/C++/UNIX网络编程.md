@@ -649,7 +649,7 @@ void Listen(int fd,int backlog){
     char *ptr;
     if((ptr = getenv("LISTENQ"))!=NULL){	//getenv获取环境变量值	stdlib.h
         backlog = atoi(ptr);		//atoi函数将ascii转换为integer，即将字符串转换成数字
-    }
+    }#include <arpa/inet.h>
 
     if(listen(fd,backlog) < 0){
         err_sys("listen error");
@@ -864,4 +864,257 @@ close函数，关闭socket并终止TCP连接。
 #include<unistd.h>
 int close(int sockfd);
 ```
+
+默认行为是把该socket标记成已关闭，然后立即返回到调用进程。
+
+getsockname 和 getpeername函数
+
+返回与某个socket关联的本地协议地址（getsockname）或外地协议地址（getpeername）
+
+```c
+#include<sys/socket.h>
+int getsockname(int sockfd, struct sockaddr *localaddr, socklen_t *addrlen);
+int getpeername(int sockfd, struct sockaddr *peeraddr, socklen_t *addrlen);//成功都返回0，出错返回-1
+```
+
+这两个函数的最后一个参数都是值-结果参数，都得装填地址结构。
+
+这两个函数与域名没有任何联系。
+
+需要这两个函数的理由如下：
+
+* 在一个没有调用bind的TCP客户上，connect成功返回后，getsockname用于返回由内核赋予该连接的本地IP地址和本地端口号。
+* 在以端口号0调用bind（告知内核去选择本地端口号）后，getsockname用于返回由内核赋予的本地端口号。
+* getsockname可用于获取某个socket的地址族。
+* 在一个以通配IP地址调用bind的TCP服务器上，与某个客户的连接一旦建立（accept成功返回），getsockname就可以用于返回由内核赋予该连接的本地IP地址。套接字描述
+* 符必须是已连接套接字的描述符。
+* 当一个服务器是由调用过accept的某个进程通过调用exec执行程序时，它能够获取客户身份的唯一途径就是调用getpeername。
+
+```c
+  //获取地址族
+  1 #include <stdio.h>
+  2 #include <sys/socket.h>
+  3 
+  4 int sockfd_fd_family(int sockfd){
+  5     struct sockaddr_storage ss;  //sockaddr_storage能够承载系统支持的任何已打开的socket地址结构
+  6     socklen_t len;
+  7 
+  8     len = sizeof(ss);
+  9     if(getsockname(sockfd,(struct sockaddr*)&ss,&len)<0 ){
+ 10         return -1;
+ 11     }
+ 12     return ss.ss_family;
+ 13 }
+ 14 
+ 15 int main()
+ 16 {
+ 17     printf("Hello world\n");
+ 18     return 0;                                                               
+ 19 }
+
+```
+
+## 课后练习
+
+1. 看一下除了INADDR_ANY(默认0)和INADDR_NONE(默认1)外以INADDR_开头的常值定义。
+
+2. ```c
+       1 #include    "unp.h"
+       2 #include <time.h>
+       3 
+       4 
+       5 int
+       6 main(int argc, char **argv)
+       7 {
+       8     int                 count =0;
+       9     int                 sockfd, n;
+      10     char                recvline[MAXLINE + 1];
+      11     struct sockaddr_in  servaddr;
+      12 
+      13     if (argc != 2)
+      14         err_quit("usage: a.out <IPaddress>");
+      15 
+      16     if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+      17         err_sys("socket error");
+      18 
+      19     bzero(&servaddr, sizeof(servaddr));
+      20     servaddr.sin_family = AF_INET;
+      21     servaddr.sin_port   = htons(5000);  /* daytime server */
+      22     if (inet_pton(AF_INET, argv[1], &servaddr.sin_addr) <= 0)
+      23         err_quit("inet_pton error for %s", argv[1]);
+      24     if (connect(sockfd, (SA *) &servaddr, sizeof(servaddr)) < 0)
+      25         err_sys("connect error");
+           
+           /*****************新加入的代码******************/
+      26     struct sockaddr_in cliaddr;
+      27     socklen_t len;
+      28     len = sizeof(cliaddr);//该值-结果参数必须在调用之前赋值或者初始化
+      29     if (getsockname(sockfd,(SA *)&cliaddr,&len)<0){
+      30         printf("getsockname error.");
+      31     }
+      32     else{
+      33         printf("cliaddr : %s",sock_ntop((SA*)&cliaddr,len));
+      34     }
+           /*****************新加入的代码******************/
+      35     
+      36        
+      37     while ( (n = read(sockfd, recvline, MAXLINE)) > 0) {
+      38         count++;
+      39         recvline[n] = 0;    /* null terminate */
+      40         if (fputs(recvline, stdout) == EOF)
+      41             err_sys("fputs error");
+      42     }  
+      43     if (n < 0)
+      44         err_sys("read error");
+      45     printf("%d\n",count);
+      46     exit(0);
+      47 }                                                                                                                                                                                       
+          
+   ```
+
+3. 子进程调用close时引用计数从2递减为1，因此不会向客户端发送FIN。当父进程调用close时引用计数递减为0，发送FIN。
+4. accept返回EINVAL，因为没有监听sockfd。
+5. 由内核指定一个临时端口。赋予监听套接字描述符。
+
+
+
+# 第五章
+
+## 笔记
+
+### TCP回射服务器程序：main函数
+
+```c
+    1 #include <stdio.h>
+    2 #include <sys/socket.h>
+    3 #include <unistd.h>
+    4 #include <arpa/inet.h>
+    5 #include <netinet/in.h>
+    6 #include <string.h>
+    7 #include <stdlib.h>
+    8 #define SERV_PORT 6666
+    9 #define LISTENQ 1024 
+   10 int main(int argc,char **argv)
+   11 {
+   12     int listenfd,connfd;
+   13     pid_t childPid;
+   14     socklen_t clilen;
+   15     struct sockaddr_in cliaddr,servaddr;
+   16     listenfd = socket(AF_INET,SOCK_STREAM,0);
+   17     bzero(&servaddr,sizeof(servaddr));
+   18     servaddr.sin_family = AF_INET;
+   19     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);                                                                                                                                       
+   20     servaddr.sin_port = htons(SERV_PORT);
+   21     bind(listenfd,(struct sockaddr *)&servaddr,sizeof(servaddr));
+   22     listen(listenfd,LISTENQ);
+   23     while(1){
+   24         clilen = sizeof(cliaddr);
+   25         connfd = accept(listenfd,(struct sockaddr *)&cliaddr,&clilen);
+   26         if((childPid = fork())==0){
+   27             close(listenfd);//子进程关闭监听
+   28             str_echo(connfd);
+   29             exit(0);
+   30         }
+   31         close(connfd);//父进程关闭连接
+   32     }
+   33     return 0;
+   34 }
+   35 
+
+```
+
+### TCP回射服务器程序：str_echo函数
+
+客户读入数据，并把它们回射给客户。
+
+```c
+   37 void str_echo(int sockfd){
+   38     ssize_t n;
+   39     char buf[MAXLINE];
+   40 again:
+   41     while((n=readline(sockfd,buf,MAXLINE))>0){
+   42         write(sockfd,buf,n);
+   43     }
+   44     if(n>0 && errno == EINTR){
+   45         goto again;
+   46     }
+   47     else if (n<0){
+   48         printf("read error");
+   49     }
+   50 }    
+```
+
+TCP回射客户程序：main函数
+
+```c
+    1 #include <stdio.h>
+    2 #include <netinet/in.h>
+    3 #include <sys/socket.h>
+    4 #include <string.h>
+    5 #include <arpa/inet.h>                                                                                                                                                                  
+    6 #define SERV_PORT 1024
+    7 int main(int argc,char **argv){
+    8     int sockfd;
+    9     struct sockaddr_in servaddr;
+   10     if(argc !=2){
+   11         printf("usage:tcpcli <ipaddress>");
+   12         return 0;
+   13     }
+   14     sockfd = socket(AF_INET,SOCK_STREAM,0);
+   15     
+   16     bzero(&servaddr,sizeof(servaddr));
+   17     servaddr.sin_family = AF_INET;
+   18     servaddr.sin_port = htons(SERV_PORT);
+   19     inet_pton(AF_INET,argv[1],&servaddr.sin_addr);
+   20     connect(sockfd,(struct sockaddr *)&servaddr,sizeof(servaddr));
+   21     str_cli(stdin,sockfd);
+   22     exit(0);
+   23 }
+   24 
+                           
+```
+
+TCP回射客户程序：str_cli函数
+
+读入一行，写到服务器，从服务器读入回射行，写到标准输出
+
+返回main函数
+
+```c
+   27 void str_cli(FILE *fp,int sockfd){
+   28     char sendline[MAXLINE],recvline[MAXLINE];
+   29     while(fgets(sendline,MAXLINE,fp)!=NULL){
+   30         write(sockfd.recvline,MAXLINE);
+   31         if(readline(sockfd,sendline,strlen(sendline))==0){
+   32             printf("server terminated prematurely");
+   33         }
+   34         fputs(recvline,stdout);                                                                                                                                                         
+   35     }
+   36 }
+
+```
+
+netstat用星号表示一个为0的IP地址或为0的端口号
+
+正常启动：
+
+(1) 客户端调用str_cli函数，该函数将阻塞于fgets调用。
+
+(2) 当服务器中accept返回时，服务器调用fork，再由子进程调用str_echo。该函数调用readline，readline调用read，而read在等待客户送入一行文本期间阻塞。
+
+(3)另一方面，服务器父进程再次调用accept并阻塞，等待下一个客户连接。
+
+正常终止：
+
+(1) 当我们键入EOF字符时（Ctrl+D），fgets返回一个空指针，于是str_cli函数返回。
+
+(2)当str_cli返回到客户的main函数时，main通过调用exit终止。
+
+(3)进程终止处理的部分工作关闭所有打开的描述符，因此客户打开的socket由内核关闭。这导致客户TCP发送一个FIN给服务器，服务器TCP则以ACK响应，这就是TCP连接终止序列的前半部分。至此，服务器socket处于CLOSE_WAIT状态，客户socket则处于FIN_WAIT_2状态。
+
+(4)当服务器TCP接受FIN时，服务器子进程阻塞于readline调用，于是readline返回0。这导致str_echo函数返回服务器子进程的main函数。
+
+(5)服务器子进程通过调用exit来终止。
+
+(6)服务器子进程中打开的所有描述符随之关闭，由子进程来关闭已连接socket会引发TCP连接终止序列的最后两个分节，一个从服务器到客户的FIN和一个从客户到服务器的ACK。至此。连接完全终止，客户套节子进入TIME_WAIT状态。
 

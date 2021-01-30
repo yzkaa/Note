@@ -1118,3 +1118,66 @@ netstat用星号表示一个为0的IP地址或为0的端口号
 
 (6)服务器子进程中打开的所有描述符随之关闭，由子进程来关闭已连接socket会引发TCP连接终止序列的最后两个分节，一个从服务器到客户的FIN和一个从客户到服务器的ACK。至此。连接完全终止，客户套节子进入TIME_WAIT状态。
 
+(7)进程终止处理的另一部分内容是：在服务器子进程终止时，给父进程发送一个SIGCHLD信号。父进程若不处理，子进程进入僵死状态。STAT状态为z。
+
+
+
+信号（signal）就是告知某个进程发生了某个事件的通知，有时也称为软件中断（software interrupt）。信号通常是异步发生的，进程预先不知道信号发生的准确时间。
+
+信号可以:
+
+* 由一个进程发送给另一个进程（或自身）；
+
+* 由内核发送给某个进程。
+
+每个信号都有一个与之关联的处置（disposition），也称为行为（action）。
+
+信号处理函数（signal handler）捕获（catching）信号。
+
+可以把某些信号的处置设定为SIG_IGN来忽略它。SIGKILL和SIGSTOP不能被忽略。
+
+可以把某个信号的处置设定为SIG_DFL来启动它的默认处置。SIGCHLD和SIGURG默认处置为忽略。
+
+ signal函数第一个参数是信号名，第二个参数或为指向函数的指针，或为常值SIG_IGN或SIG_DFL。signal是历史悠久的函数。
+
+定义自己的signal函数来调用POSIX的sigcation函数。
+
+```c
+  1 #include <stdio.h>
+  2 #include <signal.h>
+  3 typedef void Sigfunc(int);//使用typedef简化函数原型。原型：void (*signal(int signo.void (*func)))(int);
+  4 //该函数的第二个参数和返回值都是指向信号处理函数的指针
+  5 Sigfunc * signal(int signo,Sigfunc *func){
+  6     struct sigaction act,oact;
+  7     act.sa_handler = func;//设置处理函数
+  8     sigemptyset(&act.sa_mask);//设置处理函数的信号掩码 任何阻塞的信号都不能递交（delivering）给进程，把sa_mask设置为空集，意味着在该信号处理函数运行期间不阻塞额外的信号。POSIX保证被捕获的信号在其信号处理函数运行期间总是阻塞的。
+  9     act.sa_flags = 0;
+ 10     if(signo == SIGALRM){
+ 11 #ifdef SA_INTERRUPT
+ 12         act.sa_flags |= SA_INTERRUPT;
+ 13 #endif
+ 14     }else{
+ 15 #ifdef SA_RESTART//标志可选，如果设置，由相应信号中断的系统调用将由内核自动重启。如果被捕获的信号不是SIGALRM且SA_RESTART有定义，那就设置该标志。
+ 16         act.sa_flags |= SA_RESTART;
+ 17 #endif
+ 18     } 
+ 19 
+ 20     if(sigaction(signo,&act,&oact)<0){//调用sigantion函数。
+ 21         return(SIG_ERR);
+ 22     } 
+ 23     return oact.sa_handler;
+ 24 
+ 25 }
+ 26                                    
+```
+
+POSIX系统上的信号处理总结为以下几点：
+
+* 一旦安装了信号处理函数，它便一直安装着。（早期系统是每执行一次就将其拆除）
+* 在一个信号处理函数运行期间，正被递交的信号是阻塞的。而且，安装处理函数时在传递给sigaction的sa_mask信号集中指定的任何额外信号也被阻塞。
+* 如果一个信号在被阻塞期间产生了一次或多次，那么该信号被解阻塞之后通常只递交一次。也就是说Unix信号默认是不排队的。
+* 利用sigprocmask函数选择性地阻塞或解阻塞一组信号是可能的。
+
+设置僵死（zombie）状态的目的是维护子进程的信息，以便父进程在以后的某个时间获取，包括子进程ID，终止状态以及资源的利用信息（CPU时间，内存使用量等等）。
+
+僵死进程会占用内存空间，所以fork子进程都必须wait它们，防止它们变成僵死进程。
